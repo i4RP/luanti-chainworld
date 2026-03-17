@@ -1,0 +1,16 @@
+# ChainWorld Settings
+
+# URL of the ChainWorld middleware API
+chainworld_middleware_url (Middleware API URL) string http://localhost:8000
+
+# How often to flush queued events to middleware (seconds)
+chainworld_sync_interval (Sync interval) float 5.0
+
+# Maximum number of events per batch
+chainworld_batch_size (Batch size) int 100
+
+# Enable verbose logging
+chainworld_debug (Debug logging) bool false
+
+# Record mapgen events (can generate large amounts of data)
+chainworld_record_mapgen (Record mapgen) bool false

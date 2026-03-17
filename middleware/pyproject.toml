@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "chainworld-middleware"
+version = "0.1.0"
+description = "ChainWorld middleware - bridges Luanti world events to blockchain"
+authors = ["ChainWorld"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.30.0"}
+web3 = "^7.0.0"
+pydantic = "^2.0.0"
+pydantic-settings = "^2.0.0"
+python-dotenv = "^1.0.0"
+aiosqlite = "^0.20.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.6.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
