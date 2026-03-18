@@ -7,7 +7,9 @@ Supports both single-player and multiplayer modes.
 """
 
 import asyncio
+import logging
 import os
+import shutil
 import subprocess
 import time
 import uuid
@@ -29,6 +31,10 @@ BASE_VNC_PORT = 5950  # VNC ports start from 5950
 BASE_WS_PORT = 6080  # WebSocket ports start from 6080
 LUANTI_SERVER_PORT = 30000  # Default Luanti server port
 MAX_SESSIONS = 10
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s")
+logger = logging.getLogger("chainworld")
 
 app = FastAPI(title="ChainWorld Web Streaming", version="0.1.0")
 
@@ -80,19 +86,34 @@ def start_xvfb(display_num: int, width: int = 1280, height: int = 720) -> subpro
     return proc
 
 
-def start_luanti_singleplayer(display_num: int, player_name: str, width: int = 1280, height: int = 720) -> subprocess.Popen:
-    """Start Luanti in singleplayer mode on a virtual display."""
+def start_luanti_singleplayer(display_num: int, player_name: str, session_id: str, width: int = 1280, height: int = 720) -> subprocess.Popen:
+    """Start Luanti in singleplayer mode on a virtual display.
+    
+    Copies the world to a per-session temp directory to avoid world lock conflicts.
+    """
     env = os.environ.copy()
     env["DISPLAY"] = f":{display_num}"
     env["HOME"] = os.environ.get("HOME", "/home/ubuntu")
 
+    # Copy world to per-session directory to avoid lock conflicts
+    session_world_dir = Path(LUANTI_ROOT) / "worlds" / f"chainworld_session_{session_id}"
+    source_world_dir = Path(WORLD_DIR)
+    if source_world_dir.exists():
+        if session_world_dir.exists():
+            shutil.rmtree(session_world_dir)
+        shutil.copytree(source_world_dir, session_world_dir)
+        logger.info(f"Copied world to {session_world_dir}")
+    else:
+        logger.warning(f"Source world not found: {source_world_dir}")
+
     cmd = [
         LUANTI_BIN,
-        "--worldname", "chainworld_test",
+        "--worldname", f"chainworld_session_{session_id}",
         "--name", player_name,
         "--go",
     ]
 
+    logger.info(f"Starting Luanti singleplayer: {' '.join(cmd)}")
     proc = subprocess.Popen(
         cmd,
         env=env,
@@ -100,7 +121,12 @@ def start_luanti_singleplayer(display_num: int, player_name: str, width: int = 1
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    time.sleep(2)
+    time.sleep(3)
+    if proc.poll() is not None:
+        stderr_out = proc.stderr.read().decode() if proc.stderr else ""
+        logger.error(f"Luanti crashed on startup (exit code {proc.returncode}): {stderr_out[:500]}")
+    else:
+        logger.info(f"Luanti started successfully (PID {proc.pid})")
     return proc
 
 
@@ -201,6 +227,14 @@ def kill_session(session_id: str):
                     proc.kill()
                 except OSError:
                     pass
+    # Clean up session world directory
+    session_world_dir = Path(LUANTI_ROOT) / "worlds" / f"chainworld_session_{session_id}"
+    if session_world_dir.exists():
+        try:
+            shutil.rmtree(session_world_dir)
+            logger.info(f"Cleaned up session world: {session_world_dir}")
+        except OSError as e:
+            logger.warning(f"Failed to clean up session world: {e}")
     del sessions[session_id]
 
 
@@ -246,7 +280,7 @@ async def create_session(req: SessionRequest):
             luanti_proc = start_luanti_client(display_num, req.player_name)
         else:
             # Start singleplayer
-            luanti_proc = start_luanti_singleplayer(display_num, req.player_name)
+            luanti_proc = start_luanti_singleplayer(display_num, req.player_name, session_id)
 
         # Start VNC server
         vnc_proc = start_x11vnc(display_num, vnc_port)
@@ -354,12 +388,10 @@ async def server_status():
 @app.websocket("/ws/vnc/{session_id}")
 async def vnc_proxy(websocket: WebSocket, session_id: str):
     """WebSocket proxy to forward VNC traffic for a session."""
-    import logging
-
-    logger = logging.getLogger("vnc_proxy")
+    proxy_log = logging.getLogger("vnc_proxy")
 
     if session_id not in sessions:
-        logger.warning(f"Session {session_id} not found")
+        proxy_log.warning(f"Session {session_id} not found")
         await websocket.close(code=4004)
         return
 
@@ -367,13 +399,23 @@ async def vnc_proxy(websocket: WebSocket, session_id: str):
     vnc_port = session["vnc_port"]
 
     await websocket.accept()
-    logger.info(f"WebSocket accepted for session {session_id}, VNC port {vnc_port}")
+    proxy_log.info(f"WebSocket accepted for session {session_id}, VNC port {vnc_port}")
 
-    try:
-        reader, writer = await asyncio.open_connection("127.0.0.1", vnc_port)
-        logger.info(f"Connected to VNC server on port {vnc_port}")
-    except Exception as e:
-        logger.error(f"Failed to connect to VNC: {e}")
+    # Retry VNC connection a few times (x11vnc may still be starting)
+    reader = None
+    writer = None
+    for attempt in range(5):
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", vnc_port)
+            proxy_log.info(f"Connected to VNC server on port {vnc_port} (attempt {attempt + 1})")
+            break
+        except Exception as e:
+            proxy_log.warning(f"VNC connection attempt {attempt + 1} failed: {e}")
+            if attempt < 4:
+                await asyncio.sleep(1)
+
+    if reader is None or writer is None:
+        proxy_log.error(f"Failed to connect to VNC on port {vnc_port} after 5 attempts")
         await websocket.close(code=4500)
         return
 
@@ -382,33 +424,33 @@ async def vnc_proxy(websocket: WebSocket, session_id: str):
             while True:
                 data = await reader.read(65536)
                 if not data:
-                    logger.info("VNC server closed connection")
+                    proxy_log.info("VNC server closed connection")
                     break
                 await websocket.send_bytes(data)
         except (WebSocketDisconnect, ConnectionError):
-            logger.info("vnc_to_ws: client disconnected")
+            proxy_log.info("vnc_to_ws: client disconnected")
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logger.error(f"vnc_to_ws error: {type(e).__name__}: {e}")
+            proxy_log.error(f"vnc_to_ws error: {type(e).__name__}: {e}")
 
     async def ws_to_vnc():
         try:
             while True:
                 msg = await websocket.receive()
                 if msg.get("type") == "websocket.disconnect":
-                    logger.info("ws_to_vnc: client sent disconnect")
+                    proxy_log.info("ws_to_vnc: client sent disconnect")
                     break
                 data = msg.get("bytes") or msg.get("text", "").encode()
                 if data:
                     writer.write(data)
                     await writer.drain()
         except (WebSocketDisconnect, ConnectionError):
-            logger.info("ws_to_vnc: client disconnected")
+            proxy_log.info("ws_to_vnc: client disconnected")
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logger.error(f"ws_to_vnc error: {type(e).__name__}: {e}")
+            proxy_log.error(f"ws_to_vnc error: {type(e).__name__}: {e}")
 
     task1 = asyncio.create_task(vnc_to_ws())
     task2 = asyncio.create_task(ws_to_vnc())
@@ -420,7 +462,7 @@ async def vnc_proxy(websocket: WebSocket, session_id: str):
         for t in done:
             exc = t.exception()
             if exc:
-                logger.error(f"Task exception: {exc}")
+                proxy_log.error(f"Task exception: {exc}")
         for t in pending:
             t.cancel()
     finally:
