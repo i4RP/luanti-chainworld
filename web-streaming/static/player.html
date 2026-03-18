@@ -309,9 +309,10 @@
         const loadingOverlay = document.getElementById('loading-overlay');
         const loadingStatus = document.getElementById('loading-status');
 
-        // Connect to VNC via WebSocket
-        const wsUrl = `ws://${window.location.hostname}:${wsPort}`;
-        loadingStatus.textContent = `Connecting to ${wsUrl}...`;
+        // Connect to VNC via WebSocket proxy (all through same port)
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}/ws/vnc/${sessionId}`;
+        loadingStatus.textContent = `Connecting...`;
 
         let rfb;
         try {

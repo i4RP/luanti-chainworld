@@ -6,14 +6,16 @@ Manages Luanti game sessions with noVNC streaming for browser-based play.
 Supports both single-player and multiplayer modes.
 """
 
+import asyncio
 import os
+import socket
 import subprocess
 import time
 import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -348,6 +350,55 @@ async def server_status():
         "port": LUANTI_SERVER_PORT if running else None,
         "active_sessions": len(sessions),
     }
+
+
+@app.websocket("/ws/vnc/{session_id}")
+async def vnc_proxy(websocket: WebSocket, session_id: str):
+    """WebSocket proxy to forward VNC traffic for a session."""
+    if session_id not in sessions:
+        await websocket.close(code=4004)
+        return
+
+    session = sessions[session_id]
+    vnc_port = session["vnc_port"]
+
+    await websocket.accept(subprotocol="binary")
+
+    # Connect to local VNC server via TCP
+    reader, writer = await asyncio.open_connection("127.0.0.1", vnc_port)
+
+    async def vnc_to_ws():
+        try:
+            while True:
+                data = await reader.read(65536)
+                if not data:
+                    break
+                await websocket.send_bytes(data)
+        except (WebSocketDisconnect, ConnectionError, asyncio.CancelledError):
+            pass
+
+    async def ws_to_vnc():
+        try:
+            while True:
+                data = await websocket.receive_bytes()
+                writer.write(data)
+                await writer.drain()
+        except (WebSocketDisconnect, ConnectionError, asyncio.CancelledError):
+            pass
+
+    task1 = asyncio.create_task(vnc_to_ws())
+    task2 = asyncio.create_task(ws_to_vnc())
+
+    try:
+        await asyncio.gather(task1, task2, return_exceptions=True)
+    finally:
+        task1.cancel()
+        task2.cancel()
+        writer.close()
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 @app.get("/api/health")
