@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+novnc/tests/
+novnc/.github/
+novnc/docs/
+novnc/snap/
+novnc/po/
+novnc/node_modules/

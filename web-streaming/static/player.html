@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>ChainWorld - Playing</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #vnc-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Loading overlay */
+        #loading-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, #1a1a2e, #0f3460);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s;
+        }
+        #loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #loading-overlay h2 {
+            color: #e94560;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .loader {
+            width: 40px; height: 40px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: #e94560;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #loading-status {
+            color: #8892b0;
+            font-family: sans-serif;
+            font-size: 0.9rem;
+            margin-top: 1rem;
+        }
+
+        /* Touch Controls Overlay */
+        #touch-controls {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* D-Pad / Joystick area */
+        #dpad {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            width: 150px;
+            height: 150px;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        #dpad-base {
+            position: absolute;
+            width: 150px;
+            height: 150px;
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.25);
+            border-radius: 50%;
+        }
+        #dpad-stick {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background: rgba(255,255,255,0.35);
+            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            left: 45px;
+            top: 45px;
+            transition: none;
+        }
+
+        /* Action buttons */
+        .action-btn {
+            position: absolute;
+            pointer-events: auto;
+            touch-action: none;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: sans-serif;
+            font-weight: 700;
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.8);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        /* Right side action buttons */
+        #btn-dig {
+            bottom: 80px;
+            right: 30px;
+            width: 70px;
+            height: 70px;
+            background: rgba(233, 69, 96, 0.4);
+            border: 2px solid rgba(233, 69, 96, 0.6);
+        }
+        #btn-place {
+            bottom: 160px;
+            right: 30px;
+            width: 70px;
+            height: 70px;
+            background: rgba(100, 255, 218, 0.3);
+            border: 2px solid rgba(100, 255, 218, 0.5);
+        }
+        #btn-jump {
+            bottom: 30px;
+            right: 120px;
+            width: 60px;
+            height: 60px;
+            background: rgba(245, 166, 35, 0.3);
+            border: 2px solid rgba(245, 166, 35, 0.5);
+        }
+
+        /* Top buttons */
+        #btn-inventory {
+            top: 60px;
+            right: 15px;
+            width: 45px;
+            height: 45px;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.3);
+            font-size: 1.2rem;
+        }
+        #btn-chat {
+            top: 60px;
+            right: 70px;
+            width: 45px;
+            height: 45px;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.3);
+            font-size: 1.2rem;
+        }
+        #btn-fly {
+            top: 60px;
+            left: 15px;
+            width: 45px;
+            height: 45px;
+            background: rgba(83, 52, 131, 0.4);
+            border: 2px solid rgba(83, 52, 131, 0.6);
+            font-size: 0.6rem;
+        }
+        #btn-esc {
+            top: 10px;
+            left: 15px;
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.3);
+            font-size: 0.7rem;
+        }
+        #btn-back {
+            top: 10px;
+            right: 15px;
+            width: 40px;
+            height: 40px;
+            background: rgba(233, 69, 96, 0.3);
+            border: 2px solid rgba(233, 69, 96, 0.5);
+            font-size: 0.9rem;
+        }
+
+        /* Sneak button */
+        #btn-sneak {
+            bottom: 30px;
+            left: 200px;
+            width: 50px;
+            height: 50px;
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.3);
+            font-size: 0.55rem;
+        }
+
+        .action-btn:active, .action-btn.pressed {
+            filter: brightness(1.5);
+            transform: scale(0.95);
+        }
+
+        /* Camera look area (center of screen) */
+        #camera-area {
+            position: absolute;
+            top: 0;
+            left: 180px;
+            right: 120px;
+            bottom: 200px;
+            pointer-events: auto;
+            touch-action: none;
+        }
+
+        /* Hotbar selector */
+        #hotbar-controls {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 2px;
+            pointer-events: auto;
+            z-index: 101;
+        }
+        .hotbar-slot {
+            width: 36px;
+            height: 36px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: sans-serif;
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.6);
+            touch-action: none;
+        }
+        .hotbar-slot.active {
+            border-color: #e94560;
+            background: rgba(233,69,96,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="vnc-canvas"></div>
+
+        <div id="loading-overlay">
+            <h2>ChainWorld</h2>
+            <div class="loader"></div>
+            <div id="loading-status">Connecting to game...</div>
+        </div>
+
+        <div id="touch-controls">
+            <!-- D-Pad / Virtual Joystick -->
+            <div id="dpad">
+                <div id="dpad-base"></div>
+                <div id="dpad-stick"></div>
+            </div>
+
+            <!-- Camera look area -->
+            <div id="camera-area"></div>
+
+            <!-- Action buttons -->
+            <div id="btn-dig" class="action-btn">DIG</div>
+            <div id="btn-place" class="action-btn">PLACE</div>
+            <div id="btn-jump" class="action-btn">JUMP</div>
+            <div id="btn-sneak" class="action-btn">SNEAK</div>
+
+            <!-- Top buttons -->
+            <div id="btn-inventory" class="action-btn">I</div>
+            <div id="btn-chat" class="action-btn">T</div>
+            <div id="btn-fly" class="action-btn">FLY</div>
+            <div id="btn-esc" class="action-btn">ESC</div>
+            <div id="btn-back" class="action-btn">X</div>
+
+            <!-- Hotbar -->
+            <div id="hotbar-controls"></div>
+        </div>
+    </div>
+
+    <!-- noVNC -->
+    <script type="module">
+        import RFB from '/novnc/core/rfb.js';
+
+        const params = new URLSearchParams(window.location.search);
+        const sessionId = params.get('session');
+        const wsPort = params.get('ws_port');
+        const playerName = params.get('player') || 'Player';
+
+        if (!sessionId || !wsPort) {
+            window.location.href = '/';
+        }
+
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingStatus = document.getElementById('loading-status');
+
+        // Connect to VNC via WebSocket
+        const wsUrl = `ws://${window.location.hostname}:${wsPort}`;
+        loadingStatus.textContent = `Connecting to ${wsUrl}...`;
+
+        let rfb;
+        try {
+            rfb = new RFB(
+                document.getElementById('vnc-canvas'),
+                wsUrl,
+                {
+                    scaleViewport: true,
+                    resizeSession: false,
+                    showDotCursor: false,
+                    background: '#000000',
+                }
+            );
+        } catch (e) {
+            loadingStatus.textContent = `Connection failed: ${e.message}`;
+        }
+
+        if (rfb) {
+            rfb.addEventListener('connect', () => {
+                loadingStatus.textContent = 'Connected! Loading game...';
+                setTimeout(() => {
+                    loadingOverlay.classList.add('hidden');
+                }, 1500);
+            });
+
+            rfb.addEventListener('disconnect', (e) => {
+                loadingOverlay.classList.remove('hidden');
+                loadingStatus.textContent = 'Disconnected. Returning to lobby...';
+                setTimeout(() => window.location.href = '/', 3000);
+            });
+
+            rfb.addEventListener('credentialsrequired', () => {
+                rfb.sendCredentials({ password: '' });
+            });
+
+            rfb.focusOnClick = false;
+            rfb.clipViewport = true;
+            rfb.scaleViewport = true;
+        }
+
+        // ============ Touch Controls ============
+
+        // Helper: send key events to VNC
+        function sendKey(keysym, down) {
+            if (rfb && rfb._rfbConnectionState === 'connected') {
+                rfb.sendKey(keysym, null, down);
+            }
+        }
+
+        function pressKey(keysym) {
+            sendKey(keysym, true);
+            setTimeout(() => sendKey(keysym, false), 50);
+        }
+
+        // Key mappings (X11 keysyms)
+        const KEY = {
+            W: 0x0077,
+            A: 0x0061,
+            S: 0x0073,
+            D: 0x0064,
+            SPACE: 0x0020,
+            SHIFT_L: 0xFFE1,
+            ESCAPE: 0xFF1B,
+            I: 0x0069,
+            T: 0x0074,
+            K: 0x006B,  // fly
+            E: 0x0065,  // aux/special
+            RETURN: 0xFF0D,
+            _1: 0x0031, _2: 0x0032, _3: 0x0033, _4: 0x0034,
+            _5: 0x0035, _6: 0x0036, _7: 0x0037, _8: 0x0038,
+        };
+
+        // ---- Virtual Joystick (D-Pad) ----
+        const dpad = document.getElementById('dpad');
+        const stick = document.getElementById('dpad-stick');
+        let dpadTouch = null;
+        let activeKeys = new Set();
+
+        function updateMovement(dx, dy) {
+            // Normalize
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const threshold = 0.3;
+
+            const newKeys = new Set();
+            if (dist > threshold) {
+                if (dy < -threshold) newKeys.add(KEY.W);  // forward
+                if (dy > threshold) newKeys.add(KEY.S);   // backward
+                if (dx < -threshold) newKeys.add(KEY.A);  // left
+                if (dx > threshold) newKeys.add(KEY.D);   // right
+            }
+
+            // Release old keys
+            for (const k of activeKeys) {
+                if (!newKeys.has(k)) sendKey(k, false);
+            }
+            // Press new keys
+            for (const k of newKeys) {
+                if (!activeKeys.has(k)) sendKey(k, true);
+            }
+            activeKeys = newKeys;
+        }
+
+        dpad.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.changedTouches[0];
+            dpadTouch = touch.identifier;
+            handleDpadMove(touch);
+        });
+
+        dpad.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for (const touch of e.changedTouches) {
+                if (touch.identifier === dpadTouch) {
+                    handleDpadMove(touch);
+                }
+            }
+        });
+
+        dpad.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            for (const touch of e.changedTouches) {
+                if (touch.identifier === dpadTouch) {
+                    dpadTouch = null;
+                    stick.style.left = '45px';
+                    stick.style.top = '45px';
+                    updateMovement(0, 0);
+                }
+            }
+        });
+
+        function handleDpadMove(touch) {
+            const rect = dpad.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            let dx = (touch.clientX - cx) / (rect.width / 2);
+            let dy = (touch.clientY - cy) / (rect.height / 2);
+
+            // Clamp
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 1) { dx /= dist; dy /= dist; }
+
+            // Move stick visual
+            stick.style.left = (45 + dx * 35) + 'px';
+            stick.style.top = (45 + dy * 35) + 'px';
+
+            updateMovement(dx, dy);
+        }
+
+        // ---- Camera Look (mouse movement simulation) ----
+        const cameraArea = document.getElementById('camera-area');
+        let cameraTouch = null;
+        let lastCameraX = 0;
+        let lastCameraY = 0;
+
+        cameraArea.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.changedTouches[0];
+            cameraTouch = touch.identifier;
+            lastCameraX = touch.clientX;
+            lastCameraY = touch.clientY;
+        });
+
+        cameraArea.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for (const touch of e.changedTouches) {
+                if (touch.identifier === cameraTouch) {
+                    const dx = touch.clientX - lastCameraX;
+                    const dy = touch.clientY - lastCameraY;
+                    lastCameraX = touch.clientX;
+                    lastCameraY = touch.clientY;
+
+                    // Send relative mouse movement to VNC
+                    if (rfb && rfb._rfbConnectionState === 'connected') {
+                        // Get canvas dimensions
+                        const canvas = document.querySelector('#vnc-canvas canvas');
+                        if (canvas) {
+                            const rect = canvas.getBoundingClientRect();
+                            const centerX = rect.width / 2;
+                            const centerY = rect.height / 2;
+                            // Move mouse relative from center
+                            const sensitivity = 1.5;
+                            const newX = Math.round(centerX + dx * sensitivity);
+                            const newY = Math.round(centerY + dy * sensitivity);
+
+                            rfb.sendPointerEvent(newX, newY, 0);
+                            // Reset to center on next frame
+                            requestAnimationFrame(() => {
+                                rfb.sendPointerEvent(Math.round(centerX), Math.round(centerY), 0);
+                            });
+                        }
+                    }
+                }
+            }
+        });
+
+        cameraArea.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            for (const touch of e.changedTouches) {
+                if (touch.identifier === cameraTouch) {
+                    cameraTouch = null;
+                }
+            }
+        });
+
+        // ---- Action Buttons ----
+        function setupButton(id, onDown, onUp) {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                el.classList.add('pressed');
+                onDown();
+            });
+            el.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                el.classList.remove('pressed');
+                onUp();
+            });
+            el.addEventListener('touchcancel', (e) => {
+                e.preventDefault();
+                el.classList.remove('pressed');
+                onUp();
+            });
+        }
+
+        // Dig = left mouse button (hold)
+        setupButton('btn-dig',
+            () => {
+                if (rfb && rfb._rfbConnectionState === 'connected') {
+                    const canvas = document.querySelector('#vnc-canvas canvas');
+                    if (canvas) {
+                        const rect = canvas.getBoundingClientRect();
+                        rfb.sendPointerEvent(Math.round(rect.width / 2), Math.round(rect.height / 2), 1);
+                    }
+                }
+            },
+            () => {
+                if (rfb && rfb._rfbConnectionState === 'connected') {
+                    const canvas = document.querySelector('#vnc-canvas canvas');
+                    if (canvas) {
+                        const rect = canvas.getBoundingClientRect();
+                        rfb.sendPointerEvent(Math.round(rect.width / 2), Math.round(rect.height / 2), 0);
+                    }
+                }
+            }
+        );
+
+        // Place = right mouse button
+        setupButton('btn-place',
+            () => {
+                if (rfb && rfb._rfbConnectionState === 'connected') {
+                    const canvas = document.querySelector('#vnc-canvas canvas');
+                    if (canvas) {
+                        const rect = canvas.getBoundingClientRect();
+                        rfb.sendPointerEvent(Math.round(rect.width / 2), Math.round(rect.height / 2), 4);
+                    }
+                }
+            },
+            () => {
+                if (rfb && rfb._rfbConnectionState === 'connected') {
+                    const canvas = document.querySelector('#vnc-canvas canvas');
+                    if (canvas) {
+                        const rect = canvas.getBoundingClientRect();
+                        rfb.sendPointerEvent(Math.round(rect.width / 2), Math.round(rect.height / 2), 0);
+                    }
+                }
+            }
+        );
+
+        // Jump = space
+        setupButton('btn-jump',
+            () => sendKey(KEY.SPACE, true),
+            () => sendKey(KEY.SPACE, false)
+        );
+
+        // Sneak = shift
+        setupButton('btn-sneak',
+            () => sendKey(KEY.SHIFT_L, true),
+            () => sendKey(KEY.SHIFT_L, false)
+        );
+
+        // Single-press buttons
+        function setupTapButton(id, action) {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                el.classList.add('pressed');
+                action();
+            });
+            el.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                el.classList.remove('pressed');
+            });
+        }
+
+        setupTapButton('btn-inventory', () => pressKey(KEY.I));
+        setupTapButton('btn-chat', () => pressKey(KEY.T));
+        setupTapButton('btn-fly', () => pressKey(KEY.K));
+        setupTapButton('btn-esc', () => pressKey(KEY.ESCAPE));
+
+        // Back button = go back to lobby
+        setupTapButton('btn-back', () => {
+            if (confirm('Leave game?')) {
+                fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' }).finally(() => {
+                    window.location.href = '/';
+                });
+            }
+        });
+
+        // ---- Hotbar ----
+        const hotbarEl = document.getElementById('hotbar-controls');
+        let activeSlot = 0;
+        for (let i = 0; i < 8; i++) {
+            const slot = document.createElement('div');
+            slot.className = 'hotbar-slot' + (i === 0 ? ' active' : '');
+            slot.textContent = (i + 1).toString();
+            slot.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                document.querySelectorAll('.hotbar-slot').forEach(s => s.classList.remove('active'));
+                slot.classList.add('active');
+                activeSlot = i;
+                pressKey(KEY['_' + (i + 1)]);
+            });
+            hotbarEl.appendChild(slot);
+        }
+
+        // Prevent default touch behavior on the whole page
+        document.addEventListener('touchmove', (e) => {
+            if (e.target.closest('#touch-controls')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        // Fullscreen on tap (helps on mobile)
+        document.addEventListener('dblclick', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            }
+        });
+    </script>
+</body>
+</html>
