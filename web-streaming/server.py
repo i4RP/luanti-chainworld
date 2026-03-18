@@ -6,17 +6,14 @@ Manages Luanti game sessions with noVNC streaming for browser-based play.
 Supports both single-player and multiplayer modes.
 """
 
-import asyncio
-import json
 import os
-import signal
 import subprocess
 import time
 import uuid
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -320,7 +317,7 @@ async def start_server():
 
     # Use a dedicated display for the server
     server_display = BASE_DISPLAY + MAX_SESSIONS
-    xvfb_proc = start_xvfb(server_display)
+    start_xvfb(server_display)
     server_process = start_luanti_server(server_display)
 
     return {"status": "started", "port": LUANTI_SERVER_PORT}
