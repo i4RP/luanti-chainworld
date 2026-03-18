@@ -329,15 +329,29 @@
             loadingStatus.textContent = `Connection failed: ${e.message}`;
         }
 
+        let vncConnected = false;
+
         if (rfb) {
             rfb.addEventListener('connect', () => {
+                vncConnected = true;
                 loadingStatus.textContent = 'Connected! Loading game...';
+                // Auto-click center of screen to capture Luanti focus
+                setTimeout(() => {
+                    const canvas = document.querySelector('#vnc-canvas canvas');
+                    if (canvas) {
+                        // Click to dismiss any initial screen and capture mouse
+                        simulateClick(canvas);
+                        // Second click after a delay to ensure focus
+                        setTimeout(() => simulateClick(canvas), 500);
+                    }
+                }, 2000);
                 setTimeout(() => {
                     loadingOverlay.classList.add('hidden');
-                }, 1500);
+                }, 3000);
             });
 
             rfb.addEventListener('disconnect', (e) => {
+                vncConnected = false;
                 loadingOverlay.classList.remove('hidden');
                 loadingStatus.textContent = 'Disconnected. Returning to lobby...';
                 setTimeout(() => window.location.href = '/', 3000);
@@ -354,9 +368,49 @@
 
         // ============ Touch Controls ============
 
+        // Helper: simulate a mouse click on the VNC canvas
+        function simulateClick(canvas) {
+            const rect = canvas.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            canvas.dispatchEvent(new MouseEvent('mousedown', {
+                clientX: cx, clientY: cy, buttons: 1, button: 0, bubbles: true
+            }));
+            setTimeout(() => {
+                canvas.dispatchEvent(new MouseEvent('mouseup', {
+                    clientX: cx, clientY: cy, buttons: 0, button: 0, bubbles: true
+                }));
+            }, 100);
+        }
+
+        // Helper: send mouse event to VNC via DOM events on canvas
+        function sendMouseEvent(type, clientX, clientY, buttons) {
+            const canvas = document.querySelector('#vnc-canvas canvas');
+            if (!canvas) return;
+            canvas.dispatchEvent(new MouseEvent(type, {
+                clientX: clientX,
+                clientY: clientY,
+                buttons: buttons,
+                button: buttons === 4 ? 2 : (buttons === 1 ? 0 : 0),
+                bubbles: true
+            }));
+        }
+
+        // Helper: get canvas center in client coordinates
+        function getCanvasCenter() {
+            const canvas = document.querySelector('#vnc-canvas canvas');
+            if (!canvas) return null;
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: rect.left + rect.width / 2,
+                y: rect.top + rect.height / 2,
+                canvas: canvas
+            };
+        }
+
         // Helper: send key events to VNC
         function sendKey(keysym, down) {
-            if (rfb && rfb._rfbConnectionState === 'connected') {
+            if (rfb && vncConnected) {
                 rfb.sendKey(keysym, null, down);
             }
         }
@@ -484,22 +538,18 @@
                     lastCameraY = touch.clientY;
 
                     // Send relative mouse movement to VNC
-                    if (rfb && rfb._rfbConnectionState === 'connected') {
-                        // Get canvas dimensions
-                        const canvas = document.querySelector('#vnc-canvas canvas');
-                        if (canvas) {
-                            const rect = canvas.getBoundingClientRect();
-                            const centerX = rect.width / 2;
-                            const centerY = rect.height / 2;
+                    if (rfb && vncConnected) {
+                        const c = getCanvasCenter();
+                        if (c) {
                             // Move mouse relative from center
-                            const sensitivity = 1.5;
-                            const newX = Math.round(centerX + dx * sensitivity);
-                            const newY = Math.round(centerY + dy * sensitivity);
+                            const sensitivity = 2.0;
+                            const newX = c.x + dx * sensitivity;
+                            const newY = c.y + dy * sensitivity;
 
-                            rfb.sendPointerEvent(newX, newY, 0);
+                            sendMouseEvent('mousemove', newX, newY, 0);
                             // Reset to center on next frame
                             requestAnimationFrame(() => {
-                                rfb.sendPointerEvent(Math.round(centerX), Math.round(centerY), 0);
+                                sendMouseEvent('mousemove', c.x, c.y, 0);
                             });
                         }
                     }
@@ -539,44 +589,24 @@
         // Dig = left mouse button (hold)
         setupButton('btn-dig',
             () => {
-                if (rfb && rfb._rfbConnectionState === 'connected') {
-                    const canvas = document.querySelector('#vnc-canvas canvas');
-                    if (canvas) {
-                        const rect = canvas.getBoundingClientRect();
-                        rfb.sendPointerEvent(Math.round(rect.width / 2), Math.round(rect.height / 2), 1);
-                    }
-                }
+                const c = getCanvasCenter();
+                if (c) sendMouseEvent('mousedown', c.x, c.y, 1);
             },
             () => {
-                if (rfb && rfb._rfbConnectionState === 'connected') {
-                    const canvas = document.querySelector('#vnc-canvas canvas');
-                    if (canvas) {
-                        const rect = canvas.getBoundingClientRect();
-                        rfb.sendPointerEvent(Math.round(rect.width / 2), Math.round(rect.height / 2), 0);
-                    }
-                }
+                const c = getCanvasCenter();
+                if (c) sendMouseEvent('mouseup', c.x, c.y, 0);
             }
         );
 
         // Place = right mouse button
         setupButton('btn-place',
             () => {
-                if (rfb && rfb._rfbConnectionState === 'connected') {
-                    const canvas = document.querySelector('#vnc-canvas canvas');
-                    if (canvas) {
-                        const rect = canvas.getBoundingClientRect();
-                        rfb.sendPointerEvent(Math.round(rect.width / 2), Math.round(rect.height / 2), 4);
-                    }
-                }
+                const c = getCanvasCenter();
+                if (c) sendMouseEvent('mousedown', c.x, c.y, 2);
             },
             () => {
-                if (rfb && rfb._rfbConnectionState === 'connected') {
-                    const canvas = document.querySelector('#vnc-canvas canvas');
-                    if (canvas) {
-                        const rect = canvas.getBoundingClientRect();
-                        rfb.sendPointerEvent(Math.round(rect.width / 2), Math.round(rect.height / 2), 0);
-                    }
-                }
+                const c = getCanvasCenter();
+                if (c) sendMouseEvent('mouseup', c.x, c.y, 0);
             }
         );
 
