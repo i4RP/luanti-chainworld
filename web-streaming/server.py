@@ -8,7 +8,6 @@ Supports both single-player and multiplayer modes.
 
 import asyncio
 import os
-import socket
 import subprocess
 import time
 import uuid
@@ -355,45 +354,76 @@ async def server_status():
 @app.websocket("/ws/vnc/{session_id}")
 async def vnc_proxy(websocket: WebSocket, session_id: str):
     """WebSocket proxy to forward VNC traffic for a session."""
+    import logging
+
+    logger = logging.getLogger("vnc_proxy")
+
     if session_id not in sessions:
+        logger.warning(f"Session {session_id} not found")
         await websocket.close(code=4004)
         return
 
     session = sessions[session_id]
     vnc_port = session["vnc_port"]
 
-    await websocket.accept(subprotocol="binary")
+    await websocket.accept()
+    logger.info(f"WebSocket accepted for session {session_id}, VNC port {vnc_port}")
 
-    # Connect to local VNC server via TCP
-    reader, writer = await asyncio.open_connection("127.0.0.1", vnc_port)
+    try:
+        reader, writer = await asyncio.open_connection("127.0.0.1", vnc_port)
+        logger.info(f"Connected to VNC server on port {vnc_port}")
+    except Exception as e:
+        logger.error(f"Failed to connect to VNC: {e}")
+        await websocket.close(code=4500)
+        return
 
     async def vnc_to_ws():
         try:
             while True:
                 data = await reader.read(65536)
                 if not data:
+                    logger.info("VNC server closed connection")
                     break
                 await websocket.send_bytes(data)
-        except (WebSocketDisconnect, ConnectionError, asyncio.CancelledError):
+        except (WebSocketDisconnect, ConnectionError):
+            logger.info("vnc_to_ws: client disconnected")
+        except asyncio.CancelledError:
             pass
+        except Exception as e:
+            logger.error(f"vnc_to_ws error: {type(e).__name__}: {e}")
 
     async def ws_to_vnc():
         try:
             while True:
-                data = await websocket.receive_bytes()
-                writer.write(data)
-                await writer.drain()
-        except (WebSocketDisconnect, ConnectionError, asyncio.CancelledError):
+                msg = await websocket.receive()
+                if msg.get("type") == "websocket.disconnect":
+                    logger.info("ws_to_vnc: client sent disconnect")
+                    break
+                data = msg.get("bytes") or msg.get("text", "").encode()
+                if data:
+                    writer.write(data)
+                    await writer.drain()
+        except (WebSocketDisconnect, ConnectionError):
+            logger.info("ws_to_vnc: client disconnected")
+        except asyncio.CancelledError:
             pass
+        except Exception as e:
+            logger.error(f"ws_to_vnc error: {type(e).__name__}: {e}")
 
     task1 = asyncio.create_task(vnc_to_ws())
     task2 = asyncio.create_task(ws_to_vnc())
 
     try:
-        await asyncio.gather(task1, task2, return_exceptions=True)
+        done, pending = await asyncio.wait(
+            [task1, task2], return_when=asyncio.FIRST_COMPLETED
+        )
+        for t in done:
+            exc = t.exception()
+            if exc:
+                logger.error(f"Task exception: {exc}")
+        for t in pending:
+            t.cancel()
     finally:
-        task1.cancel()
-        task2.cancel()
         writer.close()
         try:
             await websocket.close()

@@ -237,7 +237,7 @@
 
                 // Wait a moment for the game to fully initialize
                 setTimeout(() => {
-                    window.location.href = `/play?session=${data.session_id}&ws_port=${data.ws_port}&player=${encodeURIComponent(name)}`;
+                    window.location.href = `/play?session=${data.session_id}&player=${encodeURIComponent(name)}`;
                 }, 3000);
 
             } catch (e) {
@@ -288,7 +288,7 @@
                         <div class="session-item">
                             <span class="name">${s.player_name} (${s.mode})</span>
                             <div class="actions">
-                                <button class="btn-join" onclick="window.location.href='/play?session=${s.session_id}&ws_port=${s.ws_port}&player=${encodeURIComponent(s.player_name)}'">Join</button>
+                                <button class="btn-join" onclick="window.location.href='/play?session=${s.session_id}&player=${encodeURIComponent(s.player_name)}'">Join</button>
                                 <button class="btn-stop" onclick="stopSession('${s.session_id}')">Stop</button>
                             </div>
                         </div>

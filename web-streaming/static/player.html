@@ -299,10 +299,9 @@
 
         const params = new URLSearchParams(window.location.search);
         const sessionId = params.get('session');
-        const wsPort = params.get('ws_port');
         const playerName = params.get('player') || 'Player';
 
-        if (!sessionId || !wsPort) {
+        if (!sessionId) {
             window.location.href = '/';
         }
 
