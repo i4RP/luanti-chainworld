@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>ChainWorld - Browser Play</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #e94560, #f5a623);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            color: #8892b0;
+            margin-bottom: 2rem;
+            font-size: 1rem;
+        }
+        .card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+        .card h2 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            color: #ccd6f6;
+        }
+        .input-group {
+            margin-bottom: 1rem;
+            text-align: left;
+        }
+        .input-group label {
+            display: block;
+            font-size: 0.85rem;
+            color: #8892b0;
+            margin-bottom: 0.3rem;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .input-group input:focus, .input-group select:focus {
+            border-color: #e94560;
+        }
+        .input-group select option { background: #1a1a2e; color: #fff; }
+        .btn {
+            display: inline-block;
+            width: 100%;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            color: #fff;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #e94560, #c62a45);
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(233,69,96,0.4); }
+        .btn-secondary {
+            background: linear-gradient(135deg, #533483, #3a1f6e);
+            margin-top: 0.5rem;
+        }
+        .btn-secondary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(83,52,131,0.4); }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .status {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #8892b0;
+            min-height: 1.5em;
+        }
+        .status.error { color: #e94560; }
+        .status.success { color: #64ffda; }
+        .sessions-list {
+            text-align: left;
+            margin-top: 1rem;
+        }
+        .session-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .session-item .name { color: #ccd6f6; }
+        .session-item .actions { display: flex; gap: 8px; }
+        .session-item .actions button {
+            padding: 4px 12px;
+            border-radius: 6px;
+            border: none;
+            font-size: 0.8rem;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn-join { background: #64ffda; color: #1a1a2e; }
+        .btn-stop { background: #e94560; color: #fff; }
+        .footer {
+            margin-top: 2rem;
+            font-size: 0.8rem;
+            color: #4a5568;
+        }
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ChainWorld</h1>
+        <p class="subtitle">On-chain Luanti World - Browser Play</p>
+
+        <div class="card">
+            <h2>Start Game</h2>
+            <div class="input-group">
+                <label for="playerName">Player Name</label>
+                <input type="text" id="playerName" value="Player" maxlength="19" placeholder="Enter your name...">
+            </div>
+            <div class="input-group">
+                <label for="gameMode">Mode</label>
+                <select id="gameMode">
+                    <option value="singleplayer">Single Player</option>
+                    <option value="multiplayer">Multiplayer</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" id="startBtn" onclick="startGame()">
+                Start Game
+            </button>
+            <div class="status" id="status"></div>
+        </div>
+
+        <div class="card" id="serverCard" style="display:none;">
+            <h2>Multiplayer Server</h2>
+            <div id="serverStatus" class="status">Server: Stopped</div>
+            <button class="btn btn-secondary" id="serverBtn" onclick="toggleServer()">
+                Start Server
+            </button>
+        </div>
+
+        <div class="card" id="sessionsCard" style="display:none;">
+            <h2>Active Sessions</h2>
+            <div class="sessions-list" id="sessionsList"></div>
+        </div>
+
+        <div class="footer">
+            Powered by Luanti + ChainWorld Mod
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let serverRunning = false;
+
+        document.getElementById('gameMode').addEventListener('change', function() {
+            document.getElementById('serverCard').style.display =
+                this.value === 'multiplayer' ? 'block' : 'none';
+        });
+
+        async function startGame() {
+            const btn = document.getElementById('startBtn');
+            const status = document.getElementById('status');
+            const name = document.getElementById('playerName').value.trim() || 'Player';
+            const mode = document.getElementById('gameMode').value;
+
+            if (mode === 'multiplayer' && !serverRunning) {
+                status.className = 'status error';
+                status.textContent = 'Please start the multiplayer server first.';
+                return;
+            }
+
+            btn.disabled = true;
+            status.className = 'status';
+            status.innerHTML = '<span class="spinner"></span> Starting game session...';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/sessions`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ player_name: name, mode: mode }),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || 'Failed to start session');
+                }
+
+                const data = await res.json();
+                status.className = 'status success';
+                status.innerHTML = '<span class="spinner"></span> Session started! Loading game...';
+
+                // Wait a moment for the game to fully initialize
+                setTimeout(() => {
+                    window.location.href = `/play?session=${data.session_id}&player=${encodeURIComponent(name)}`;
+                }, 3000);
+
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `Error: ${e.message}`;
+                btn.disabled = false;
+            }
+        }
+
+        async function toggleServer() {
+            const btn = document.getElementById('serverBtn');
+            const status = document.getElementById('serverStatus');
+            btn.disabled = true;
+
+            try {
+                if (serverRunning) {
+                    await fetch(`${API_BASE}/api/server/stop`, { method: 'POST' });
+                    serverRunning = false;
+                    btn.textContent = 'Start Server';
+                    status.className = 'status';
+                    status.textContent = 'Server: Stopped';
+                } else {
+                    status.innerHTML = '<span class="spinner"></span> Starting server...';
+                    await fetch(`${API_BASE}/api/server/start`, { method: 'POST' });
+                    serverRunning = true;
+                    btn.textContent = 'Stop Server';
+                    status.className = 'status success';
+                    status.textContent = 'Server: Running';
+                }
+            } catch (e) {
+                status.className = 'status error';
+                status.textContent = `Error: ${e.message}`;
+            }
+
+            btn.disabled = false;
+        }
+
+        async function loadSessions() {
+            try {
+                const res = await fetch(`${API_BASE}/api/sessions`);
+                const data = await res.json();
+                const card = document.getElementById('sessionsCard');
+                const list = document.getElementById('sessionsList');
+
+                if (data.sessions.length > 0) {
+                    card.style.display = 'block';
+                    list.innerHTML = data.sessions.map(s => `
+                        <div class="session-item">
+                            <span class="name">${s.player_name} (${s.mode})</span>
+                            <div class="actions">
+                                <button class="btn-join" onclick="window.location.href='/play?session=${s.session_id}&player=${encodeURIComponent(s.player_name)}'">Join</button>
+                                <button class="btn-stop" onclick="stopSession('${s.session_id}')">Stop</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    card.style.display = 'none';
+                }
+            } catch (e) {
+                console.error('Failed to load sessions:', e);
+            }
+        }
+
+        async function stopSession(sid) {
+            await fetch(`${API_BASE}/api/sessions/${sid}`, { method: 'DELETE' });
+            loadSessions();
+        }
+
+        // Check server status on load
+        async function checkServerStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/api/server/status`);
+                const data = await res.json();
+                serverRunning = data.running;
+                if (serverRunning) {
+                    document.getElementById('serverBtn').textContent = 'Stop Server';
+                    document.getElementById('serverStatus').className = 'status success';
+                    document.getElementById('serverStatus').textContent = 'Server: Running';
+                }
+            } catch (e) {}
+        }
+
+        checkServerStatus();
+        loadSessions();
+        setInterval(loadSessions, 5000);
+    </script>
+</body>
+</html>
